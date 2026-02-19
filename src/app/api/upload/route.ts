@@ -49,16 +49,15 @@ export async function POST(request: Request) {
       })
     );
 
-    // TODO: Phase 2 — store files in S3, persist metadata to DB,
-    //       normalize transcripts, and dispatch to Devin API.
-
     return NextResponse.json(
       {
         meeting_id: meetingId,
         status: "uploaded",
         file_count: files.length,
         link_count: links.length,
-        message: `Received ${files.length} file(s) and ${links.length} link(s). Processing queued.`,
+        files: filesSummary,
+        links,
+        message: `Received ${files.length} file(s) and ${links.length} link(s). Ready for review.`,
       },
       { status: 201 }
     );

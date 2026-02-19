@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import type { LinkItem, UploadedFile, UploadResponse } from "../lib/types";
 import FileDropZone from "./FileDropZone";
+import IngestionResult from "./IngestionResult";
 import LinkInput from "./LinkInput";
 
 type Status = "idle" | "uploading" | "success" | "error";
@@ -73,6 +74,16 @@ export default function UploadForm() {
     }
   }, [files, links, totalItems]);
 
+  const handleReset = useCallback(() => {
+    setResult(null);
+    setStatus("idle");
+    setError(null);
+  }, []);
+
+  if (status === "success" && result) {
+    return <IngestionResult result={result} onReset={handleReset} />;
+  }
+
   return (
     <div className="space-y-6">
       <section>
@@ -104,17 +115,6 @@ export default function UploadForm() {
           {status === "uploading" ? "Uploading..." : "Process Meeting Context"}
         </button>
       </div>
-
-      {status === "success" && result && (
-        <div className="rounded-xl bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 p-4 text-sm">
-          <p className="font-medium text-green-800 dark:text-green-200">
-            {result.message}
-          </p>
-          <p className="text-green-600 dark:text-green-400 mt-1">
-            Meeting ID: {result.meeting_id}
-          </p>
-        </div>
-      )}
 
       {status === "error" && error && (
         <div className="rounded-xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 p-4 text-sm">
