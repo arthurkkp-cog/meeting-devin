@@ -23,8 +23,14 @@ interface GitPermissionsResponse {
   total?: number | null;
 }
 
-async function fetchOrgRepos(apiToken: string): Promise<string[]> {
+interface RepoFetchResult {
+  repos: string[];
+  debug: string;
+}
+
+async function fetchOrgRepos(apiToken: string): Promise<RepoFetchResult> {
   const repos: string[] = [];
+  const debugLines: string[] = [];
   let cursor: string | null = null;
 
   try {
@@ -35,16 +41,24 @@ async function fetchOrgRepos(apiToken: string): Promise<string[]> {
       url.searchParams.set("first", "200");
       if (cursor) url.searchParams.set("after", cursor);
 
+      debugLines.push(`Fetching: ${url.pathname}${url.search}`);
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${apiToken}` },
       });
 
+      debugLines.push(`Status: ${res.status}`);
       if (!res.ok) {
-        console.error(`Git permissions API returned ${res.status}: ${await res.text().catch(() => "")}`);
+        const errText = await res.text().catch(() => "");
+        debugLines.push(`Error body: ${errText.slice(0, 500)}`);
         break;
       }
 
-      const data: GitPermissionsResponse = await res.json();
+      const rawText = await res.text();
+      debugLines.push(`Raw response (first 500 chars): ${rawText.slice(0, 500)}`);
+
+      const data: GitPermissionsResponse = JSON.parse(rawText);
+      debugLines.push(`items count: ${data.items?.length ?? "undefined"}, total: ${data.total}`);
+
       for (const item of data.items ?? []) {
         if (item.repo_path) repos.push(item.repo_path);
         else if (item.group_prefix) repos.push(`${item.group_prefix} (group)`);
@@ -53,10 +67,11 @@ async function fetchOrgRepos(apiToken: string): Promise<string[]> {
       cursor = data.has_next_page ? (data.end_cursor ?? null) : null;
     } while (cursor);
   } catch (err) {
-    console.error("Failed to fetch org repos:", err);
+    debugLines.push(`Exception: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  return repos;
+  debugLines.push(`Final repos found: ${repos.length}`);
+  return { repos, debug: debugLines.join(" | ") };
 }
 
 export async function POST(request: Request) {
@@ -84,7 +99,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const repos = await fetchOrgRepos(apiToken);
+    const { repos, debug: repoDebug } = await fetchOrgRepos(apiToken);
 
     let fullPrompt = body.prompt;
     if (repos.length > 0) {
@@ -143,7 +158,9 @@ export async function POST(request: Request) {
       meeting_id: body.meeting_id,
       session_url: sessionUrl,
       status: "dispatched",
-      message: `Successfully dispatched to Devin.${repos.length > 0 ? ` (${repos.length} repos included)` : ""}`,
+      message: `Successfully dispatched to Devin.${repos.length > 0 ? ` (${repos.length} repos included)` : " (0 repos found)"}`,
+      repo_debug: repoDebug,
+      repos_found: repos,
     });
   } catch (err) {
     console.error("Dispatch error:", err);
