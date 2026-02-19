@@ -16,13 +16,43 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-const DEFAULT_PROMPT = `You are analyzing a meeting recording and transcript.
+const DEFAULT_INSTRUCTIONS = `You are analyzing a meeting recording and transcript.
 
 Please:
 1. Summarize the key discussion points
 2. Extract all action items with owners and deadlines
 3. Identify any decisions that were made
 4. Flag any open questions or unresolved topics`;
+
+function buildFullPrompt(
+  instructions: string,
+  result: UploadResponse
+): string {
+  const parts: string[] = [instructions.trim()];
+
+  const transcripts = result.files.filter((f) => f.transcript !== null);
+  if (transcripts.length > 0) {
+    parts.push("\n\n---\n\n## Transcript Content\n");
+    for (const file of transcripts) {
+      if (!file.transcript) continue;
+      parts.push(`### ${file.name} (${file.transcript.source_format})\n`);
+      for (const seg of file.transcript.segments) {
+        const prefix = [seg.start, seg.speaker].filter(Boolean).join(" ");
+        parts.push(prefix ? `[${prefix}] ${seg.text}` : seg.text);
+      }
+      parts.push("");
+    }
+  }
+
+  if (result.links.length > 0) {
+    parts.push("\n---\n\n## Meeting Links\n");
+    for (const url of result.links) {
+      parts.push(`- ${url}`);
+    }
+  }
+
+  return parts.join("\n");
+}
 
 function TranscriptView({ file }: { file: FileSummary }) {
   const [expanded, setExpanded] = useState(false);
@@ -82,12 +112,15 @@ export default function IngestionResult({
   result,
   onReset,
 }: IngestionResultProps) {
-  const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
+  const [instructions, setInstructions] = useState(DEFAULT_INSTRUCTIONS);
   const [apiKey, setApiKey] = useState("");
   const [dispatching, setDispatching] = useState(false);
   const [dispatchResult, setDispatchResult] =
     useState<DispatchResponse | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const fullPrompt = buildFullPrompt(instructions, result);
 
   const handleDispatch = useCallback(async () => {
     setDispatching(true);
@@ -100,7 +133,7 @@ export default function IngestionResult({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           meeting_id: result.meeting_id,
-          prompt: prompt.trim(),
+          prompt: fullPrompt,
           api_key: apiKey.trim(),
         }),
       });
@@ -119,7 +152,7 @@ export default function IngestionResult({
     } finally {
       setDispatching(false);
     }
-  }, [result.meeting_id, prompt, apiKey]);
+  }, [result.meeting_id, fullPrompt, apiKey]);
 
   return (
     <div className="space-y-6">
@@ -209,18 +242,36 @@ export default function IngestionResult({
 
           <div>
             <label
-              htmlFor="dispatch-prompt"
+              htmlFor="dispatch-instructions"
               className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide"
             >
-              Prompt for Devin
+              Instructions for Devin
             </label>
+            <p className="text-xs text-gray-400 mt-1">
+              Transcript content and links will be auto-appended below your instructions.
+            </p>
             <textarea
-              id="dispatch-prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              id="dispatch-instructions"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
               rows={6}
               className="mt-2 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
             />
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowPreview(!showPreview)}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              {showPreview ? "Hide" : "Preview"} full prompt ({fullPrompt.length.toLocaleString()} chars)
+            </button>
+            {showPreview && (
+              <pre className="mt-2 max-h-96 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4 text-xs whitespace-pre-wrap font-mono text-gray-700 dark:text-gray-300">
+                {fullPrompt}
+              </pre>
+            )}
           </div>
 
           <div className="flex items-center justify-between">
@@ -234,7 +285,7 @@ export default function IngestionResult({
             <button
               type="button"
               onClick={handleDispatch}
-              disabled={dispatching || !prompt.trim() || !apiKey.trim()}
+              disabled={dispatching || !instructions.trim() || !apiKey.trim()}
               className="rounded-xl bg-blue-600 text-white px-6 py-2.5 text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 transition-colors"
             >
               {dispatching ? "Dispatching..." : "Dispatch to Devin"}
