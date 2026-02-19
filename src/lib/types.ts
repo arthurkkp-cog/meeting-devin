@@ -11,11 +11,25 @@ export interface LinkItem {
   url: string;
 }
 
+export interface TranscriptSegment {
+  speaker: string | null;
+  start: string | null;
+  end: string | null;
+  text: string;
+}
+
+export interface ParsedTranscriptData {
+  source_format: string;
+  segments: TranscriptSegment[];
+  raw_text: string;
+}
+
 export interface FileSummary {
   name: string;
   size: number;
   type: "video" | "document";
   mime: string;
+  transcript: ParsedTranscriptData | null;
 }
 
 export interface UploadResponse {
@@ -31,6 +45,7 @@ export interface UploadResponse {
 export interface DispatchRequest {
   meeting_id: string;
   prompt: string;
+  api_key: string;
 }
 
 export interface DispatchResponse {

@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { DispatchResponse, UploadResponse } from "../lib/types";
+import type {
+  DispatchResponse,
+  FileSummary,
+  TranscriptSegment,
+  UploadResponse,
+} from "../lib/types";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -19,6 +24,55 @@ Please:
 3. Identify any decisions that were made
 4. Flag any open questions or unresolved topics`;
 
+function TranscriptView({ file }: { file: FileSummary }) {
+  const [expanded, setExpanded] = useState(false);
+  const transcript = file.transcript;
+  if (!transcript) return null;
+
+  const hasTimestamps = transcript.segments.some(
+    (s: TranscriptSegment) => s.start !== null
+  );
+
+  return (
+    <div className="mt-2 ml-6">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+      >
+        {expanded ? "Hide transcript" : "Show transcript"} ({transcript.source_format}, {transcript.segments.length} segment{transcript.segments.length !== 1 ? "s" : ""})
+      </button>
+      {expanded && (
+        <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 text-xs font-mono space-y-2">
+          {hasTimestamps ? (
+            transcript.segments.map((seg: TranscriptSegment, j: number) => (
+              <div key={j} className="flex gap-2">
+                {seg.start && (
+                  <span className="text-gray-400 shrink-0 w-24">
+                    {seg.start}
+                  </span>
+                )}
+                {seg.speaker && (
+                  <span className="text-blue-500 font-semibold shrink-0">
+                    {seg.speaker}:
+                  </span>
+                )}
+                <span className="text-gray-700 dark:text-gray-300">
+                  {seg.text}
+                </span>
+              </div>
+            ))
+          ) : (
+            <pre className="whitespace-pre-wrap text-gray-700 dark:text-gray-300">
+              {transcript.raw_text}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface IngestionResultProps {
   result: UploadResponse;
   onReset: () => void;
@@ -29,6 +83,7 @@ export default function IngestionResult({
   onReset,
 }: IngestionResultProps) {
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
+  const [apiKey, setApiKey] = useState("");
   const [dispatching, setDispatching] = useState(false);
   const [dispatchResult, setDispatchResult] =
     useState<DispatchResponse | null>(null);
@@ -46,6 +101,7 @@ export default function IngestionResult({
         body: JSON.stringify({
           meeting_id: result.meeting_id,
           prompt: prompt.trim(),
+          api_key: apiKey.trim(),
         }),
       });
 
@@ -63,7 +119,7 @@ export default function IngestionResult({
     } finally {
       setDispatching(false);
     }
-  }, [result.meeting_id, prompt]);
+  }, [result.meeting_id, prompt, apiKey]);
 
   return (
     <div className="space-y-6">
@@ -87,15 +143,23 @@ export default function IngestionResult({
             </h3>
             <ul className="space-y-1.5">
               {result.files.map((f, i) => (
-                <li key={i} className="flex items-center gap-2 text-sm">
-                  <span>{f.type === "video" ? "🎬" : "📄"}</span>
-                  <span className="truncate">{f.name}</span>
-                  <span className="text-gray-400 text-xs shrink-0">
-                    {formatSize(f.size)}
-                  </span>
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
-                    {f.type}
-                  </span>
+                <li key={i}>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>{f.type === "video" ? "🎬" : "📄"}</span>
+                    <span className="truncate">{f.name}</span>
+                    <span className="text-gray-400 text-xs shrink-0">
+                      {formatSize(f.size)}
+                    </span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
+                      {f.type}
+                    </span>
+                    {f.transcript && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 shrink-0">
+                        transcript parsed
+                      </span>
+                    )}
+                  </div>
+                  <TranscriptView file={f} />
                 </li>
               ))}
             </ul>
@@ -122,7 +186,27 @@ export default function IngestionResult({
       </div>
 
       {!dispatchResult && (
-        <div className="space-y-3">
+        <div className="space-y-4">
+          <div>
+            <label
+              htmlFor="api-key"
+              className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide"
+            >
+              Devin API Key
+            </label>
+            <input
+              id="api-key"
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Enter your Devin API / service key..."
+              className="mt-2 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Your key is sent server-side per request and is not stored.
+            </p>
+          </div>
+
           <div>
             <label
               htmlFor="dispatch-prompt"
@@ -150,7 +234,7 @@ export default function IngestionResult({
             <button
               type="button"
               onClick={handleDispatch}
-              disabled={dispatching || !prompt.trim()}
+              disabled={dispatching || !prompt.trim() || !apiKey.trim()}
               className="rounded-xl bg-blue-600 text-white px-6 py-2.5 text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 transition-colors"
             >
               {dispatching ? "Dispatching..." : "Dispatch to Devin"}

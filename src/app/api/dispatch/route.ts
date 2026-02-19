@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 interface DispatchBody {
   meeting_id: string;
   prompt: string;
+  api_key: string;
 }
 
 export async function POST(request: Request) {
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const apiToken = process.env.DEVIN_API_TOKEN;
+    const apiToken = body.api_key?.trim() || process.env.DEVIN_API_TOKEN;
     if (!apiToken) {
       return NextResponse.json(
         {
@@ -24,9 +25,9 @@ export async function POST(request: Request) {
           session_url: null,
           status: "failed",
           message:
-            "DEVIN_API_TOKEN is not configured. Set it in your Vercel environment variables.",
+            "No API key provided. Enter your Devin API key or set DEVIN_API_TOKEN as an environment variable.",
         },
-        { status: 500 }
+        { status: 400 }
       );
     }
 

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isTranscriptFile, parseTranscript } from "../../../lib/transcript";
+import type { ParsedTranscript } from "../../../lib/transcript";
 
 const VIDEO_EXTENSIONS = ["mp4", "webm", "mov", "avi", "mkv"];
 
@@ -31,12 +33,24 @@ export async function POST(request: Request) {
 
     const meetingId = crypto.randomUUID();
 
-    const filesSummary = files.map((f) => ({
-      name: f.name,
-      size: f.size,
-      type: classifyFile(f.name, f.type),
-      mime: f.type,
-    }));
+    const filesSummary = await Promise.all(
+      files.map(async (f) => {
+        let transcript: ParsedTranscript | null = null;
+
+        if (isTranscriptFile(f.name)) {
+          const text = await f.text();
+          transcript = parseTranscript(f.name, text);
+        }
+
+        return {
+          name: f.name,
+          size: f.size,
+          type: classifyFile(f.name, f.type),
+          mime: f.type,
+          transcript,
+        };
+      })
+    );
 
     console.log(
       JSON.stringify({
@@ -44,7 +58,12 @@ export async function POST(request: Request) {
         meeting_id: meetingId,
         file_count: files.length,
         link_count: links.length,
-        files: filesSummary,
+        files: filesSummary.map((f) => ({
+          name: f.name,
+          size: f.size,
+          type: f.type,
+          has_transcript: f.transcript !== null,
+        })),
         links,
       })
     );
