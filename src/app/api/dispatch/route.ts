@@ -23,16 +23,54 @@ interface GitPermissionsResponse {
   total?: number | null;
 }
 
+interface GitConnectionItem {
+  git_connection_id?: string;
+  git_provider_type?: string;
+  host?: string;
+  name?: string;
+}
+
+interface GitConnectionsResponse {
+  items: GitConnectionItem[];
+  end_cursor?: string | null;
+  has_next_page?: boolean;
+  total?: number | null;
+}
+
 interface RepoFetchResult {
   repos: string[];
   debug: string;
 }
 
+async function fetchConnections(apiToken: string): Promise<Map<string, string>> {
+  const hostMap = new Map<string, string>();
+  try {
+    const res = await fetch(
+      "https://api.devin.ai/v3beta1/enterprise/git-providers/connections?first=200",
+      { headers: { Authorization: `Bearer ${apiToken}` } }
+    );
+    if (res.ok) {
+      const data: GitConnectionsResponse = await res.json();
+      for (const conn of data.items ?? []) {
+        if (conn.git_connection_id && conn.host) {
+          hostMap.set(conn.git_connection_id, conn.host.replace(/\/$/, ""));
+        }
+      }
+    }
+  } catch {
+    // connections fetch failed, will fall back to no host prefix
+  }
+  return hostMap;
+}
+
 async function fetchOrgRepos(apiToken: string): Promise<RepoFetchResult> {
   const repos: string[] = [];
   const debugLines: string[] = [];
-  let cursor: string | null = null;
 
+  const hostMap = await fetchConnections(apiToken);
+  debugLines.push(`Connections found: ${hostMap.size} (${[...hostMap.entries()].map(([id, h]) => `${id.slice(-8)}=${h}`).join(", ")})`);
+
+  let cursor: string | null = null;
   try {
     do {
       const url = new URL(
@@ -41,27 +79,27 @@ async function fetchOrgRepos(apiToken: string): Promise<RepoFetchResult> {
       url.searchParams.set("first", "200");
       if (cursor) url.searchParams.set("after", cursor);
 
-      debugLines.push(`Fetching: ${url.pathname}${url.search}`);
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${apiToken}` },
       });
 
-      debugLines.push(`Status: ${res.status}`);
+      debugLines.push(`Permissions status: ${res.status}`);
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
-        debugLines.push(`Error body: ${errText.slice(0, 500)}`);
+        debugLines.push(`Error: ${errText.slice(0, 300)}`);
         break;
       }
 
-      const rawText = await res.text();
-      debugLines.push(`Raw response (first 500 chars): ${rawText.slice(0, 500)}`);
-
-      const data: GitPermissionsResponse = JSON.parse(rawText);
-      debugLines.push(`items count: ${data.items?.length ?? "undefined"}, total: ${data.total}`);
+      const data: GitPermissionsResponse = await res.json();
+      debugLines.push(`Permissions items: ${data.items?.length ?? 0}`);
 
       for (const item of data.items ?? []) {
-        if (item.repo_path) repos.push(item.repo_path);
-        else if (item.group_prefix) repos.push(`${item.group_prefix} (group)`);
+        const host = (item.git_connection_id && hostMap.get(item.git_connection_id)) || "";
+        if (item.repo_path) {
+          repos.push(host ? `${host}/${item.repo_path}` : item.repo_path);
+        } else if (item.group_prefix) {
+          repos.push(host ? `${host}/${item.group_prefix}/* (all repos in group)` : `${item.group_prefix} (group)`);
+        }
       }
 
       cursor = data.has_next_page ? (data.end_cursor ?? null) : null;
@@ -70,7 +108,7 @@ async function fetchOrgRepos(apiToken: string): Promise<RepoFetchResult> {
     debugLines.push(`Exception: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  debugLines.push(`Final repos found: ${repos.length}`);
+  debugLines.push(`Final repos: ${repos.length}`);
   return { repos, debug: debugLines.join(" | ") };
 }
 
