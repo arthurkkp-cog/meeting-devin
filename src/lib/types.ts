@@ -97,4 +97,6 @@ export interface DispatchResponse {
   session_url: string | null;
   status: "dispatched" | "failed";
   message: string;
+  repo_debug?: string;
+  repos_found?: string[];
 }

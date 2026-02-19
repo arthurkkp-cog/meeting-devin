@@ -684,6 +684,20 @@ function TextTranscriptDispatch({
             View Devin session
           </a>
         )}
+        {dispatchResult.repo_debug && (
+          <details className="mt-2">
+            <summary className="text-xs text-gray-500 cursor-pointer">Repo fetch debug</summary>
+            <pre className="mt-1 text-xs bg-gray-100 dark:bg-gray-800 p-2 rounded overflow-x-auto whitespace-pre-wrap">{dispatchResult.repo_debug}</pre>
+          </details>
+        )}
+        {dispatchResult.repos_found && dispatchResult.repos_found.length > 0 && (
+          <div className="mt-2">
+            <p className="text-xs text-gray-500">Repos found ({dispatchResult.repos_found.length}):</p>
+            <ul className="text-xs text-gray-600 dark:text-gray-400 ml-4 list-disc">
+              {dispatchResult.repos_found.map((r, i) => <li key={i}>{r}</li>)}
+            </ul>
+          </div>
+        )}
       </div>
     );
   }
