@@ -14,6 +14,7 @@ export default function UploadForm() {
   const [status, setStatus] = useState<Status>("idle");
   const [result, setResult] = useState<UploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastUploadedFiles, setLastUploadedFiles] = useState<File[]>([]);
 
   const addFiles = useCallback((newFiles: UploadedFile[]) => {
     setFiles((prev) => [...prev, ...newFiles]);
@@ -66,6 +67,7 @@ export default function UploadForm() {
       const data: UploadResponse = await res.json();
       setResult(data);
       setStatus("success");
+      setLastUploadedFiles(files.map((f) => f.file));
       setFiles([]);
       setLinks([]);
     } catch (err) {
@@ -81,7 +83,7 @@ export default function UploadForm() {
   }, []);
 
   if (status === "success" && result) {
-    return <IngestionResult result={result} onReset={handleReset} />;
+    return <IngestionResult result={result} originalFiles={lastUploadedFiles} onReset={handleReset} />;
   }
 
   return (

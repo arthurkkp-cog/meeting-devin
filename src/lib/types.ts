@@ -42,6 +42,50 @@ export interface UploadResponse {
   message: string;
 }
 
+export type TranscriptionTool = "whisper" | "deepgram" | "assemblyai";
+
+export const TRANSCRIPTION_TOOLS: {
+  id: TranscriptionTool;
+  name: string;
+  description: string;
+  keyPlaceholder: string;
+}[] = [
+  {
+    id: "whisper",
+    name: "OpenAI Whisper",
+    description: "High accuracy, supports 97 languages",
+    keyPlaceholder: "OpenAI API key (sk-...)",
+  },
+  {
+    id: "deepgram",
+    name: "Deepgram",
+    description: "Fast, real-time capable, speaker diarization",
+    keyPlaceholder: "Deepgram API key",
+  },
+  {
+    id: "assemblyai",
+    name: "AssemblyAI",
+    description: "Speaker labels, summaries, sentiment analysis",
+    keyPlaceholder: "AssemblyAI API key",
+  },
+];
+
+export interface TranscriptionRequest {
+  tool: TranscriptionTool;
+  api_key: string;
+  file_name: string;
+}
+
+export interface TranscriptionResult {
+  tool: TranscriptionTool;
+  tool_name: string;
+  file_name: string;
+  status: "success" | "failed";
+  transcript: ParsedTranscriptData | null;
+  error: string | null;
+  duration_ms: number;
+}
+
 export interface DispatchRequest {
   meeting_id: string;
   prompt: string;
