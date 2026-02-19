@@ -8,59 +8,52 @@ interface DispatchBody {
   api_key: string;
 }
 
-interface GitPermission {
-  repo_path?: string;
+interface GitPermissionItem {
+  git_connection_id?: string;
+  git_permission_id?: string;
   group_prefix?: string;
-  repo_url?: string;
-  group_prefix_url?: string;
+  prefix_path?: string;
+  repo_path?: string;
+}
+
+interface GitPermissionsResponse {
+  items: GitPermissionItem[];
+  end_cursor?: string | null;
+  has_next_page?: boolean;
+  total?: number | null;
 }
 
 async function fetchOrgRepos(apiToken: string): Promise<string[]> {
   const repos: string[] = [];
+  let cursor: string | null = null;
 
   try {
-    const permsRes = await fetch(
-      `https://api.devin.ai/v3beta1/organizations/${ORG_ID}/git-providers/permissions`,
-      {
+    do {
+      const url = new URL(
+        `https://api.devin.ai/v3beta1/enterprise/organizations/${ORG_ID}/git-providers/permissions`
+      );
+      url.searchParams.set("first", "200");
+      if (cursor) url.searchParams.set("after", cursor);
+
+      const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${apiToken}` },
-      }
-    );
+      });
 
-    if (permsRes.ok) {
-      const permsData = await permsRes.json();
-      const permissions: GitPermission[] =
-        permsData.permissions ?? permsData.data ?? (Array.isArray(permsData) ? permsData : []);
-      for (const p of permissions) {
-        if (p.repo_path) repos.push(p.repo_url ?? p.repo_path);
-        else if (p.group_prefix)
-          repos.push(`${p.group_prefix_url ?? p.group_prefix} (group)`);
+      if (!res.ok) {
+        console.error(`Git permissions API returned ${res.status}: ${await res.text().catch(() => "")}`);
+        break;
       }
-      if (repos.length > 0) return repos;
-    }
-  } catch {
-    // v3 endpoint not available, try v2
-  }
 
-  try {
-    const v2Res = await fetch(
-      `https://api.devin.ai/v2/enterprise/organizations/${ORG_ID}/permissions?limit=200`,
-      {
-        headers: { Authorization: `Bearer ${apiToken}` },
+      const data: GitPermissionsResponse = await res.json();
+      for (const item of data.items ?? []) {
+        if (item.repo_path) repos.push(item.repo_path);
+        else if (item.group_prefix) repos.push(`${item.group_prefix} (group)`);
       }
-    );
 
-    if (v2Res.ok) {
-      const v2Data = await v2Res.json();
-      const permissions: GitPermission[] =
-        v2Data.permissions ?? v2Data.data ?? (Array.isArray(v2Data) ? v2Data : []);
-      for (const p of permissions) {
-        if (p.repo_path) repos.push(p.repo_url ?? p.repo_path);
-        else if (p.group_prefix)
-          repos.push(`${p.group_prefix_url ?? p.group_prefix} (group)`);
-      }
-    }
-  } catch {
-    // v2 also not available
+      cursor = data.has_next_page ? (data.end_cursor ?? null) : null;
+    } while (cursor);
+  } catch (err) {
+    console.error("Failed to fetch org repos:", err);
   }
 
   return repos;
